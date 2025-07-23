@@ -12,7 +12,7 @@ var (
 	upgradeStatus = prometheus.NewGauge(
 		prometheus.GaugeOpts{
 			Name: "celestia_upgrade_status",
-			Help: "Upgrade status as reported by celestia-app signal service, this is 1 if upgrade if signal threshold and upgrade is happening, 0 otherwise",
+			Help: "Upgrade status as reported by celestia-app signal service, this is 1 if signal quorom is reached and upgrade is happening, 0 otherwise",
 		},
 	)
 	upgradeVersion = prometheus.NewGauge(

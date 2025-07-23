@@ -61,7 +61,7 @@ celestia_tally_total_voting_power 6.24621616e+08
 # HELP celestia_upgrade_height Height at which the upgrade will take place
 # TYPE celestia_upgrade_height gauge
 celestia_upgrade_height 6.680339e+06
-# HELP celestia_upgrade_status Upgrade status as reported by celestia-app signal service, this is 1 if upgrade if signal threshold and upgrade is happening, 0 otherwise
+# HELP celestia_upgrade_status Upgrade status as reported by celestia-app signal service, this is 1 if signal quorom is reached and upgrade is happening, 0 otherwise
 # TYPE celestia_upgrade_status gauge
 celestia_upgrade_status 1
 # HELP celestia_upgrade_version Current upgrade version
