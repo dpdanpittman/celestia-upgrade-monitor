@@ -37,7 +37,7 @@ Useful for dashboards, alerts, or integrations that track scheduled upgrades in 
 3. **Run the service**:
 
    ```bash
-    ./celestia-upgrade-monitor -grpc-addr <GRPC_ENDPOINT> -port <PORT>
+    ./celestia-upgrade-monitor -grpc-addr <GRPC_ENDPOINT> -server-port <PORT>
    ```
 
 4. **Access the endpoints**:
