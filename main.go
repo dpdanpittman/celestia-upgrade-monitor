@@ -18,12 +18,19 @@ import (
 )
 
 func init() {
-	// TODO: change to UpgradeData struct and add tally data
-	prometheus.MustRegister(upgradeStatus, upgradeVersion, upgradeHeight)
+	prometheus.MustRegister(upgradeStatus,
+		upgradeVersion,
+		upgradeHeight,
+		tallyThresholdPower,
+		tallyTotalVotingPower,
+		tallyThresholdPercent,
+	)
 }
 
 func main() {
 	log.Println("Starting gRPC client...")
+
+	// Define flags for gRPC server address and HTTP server port
 	addr := flag.String("grpc-addr", "string", "gRPC server address")
 	port := flag.String("server-port", "string", "HTTP server port, used to serve JSON data from this HTTP server")
 	flag.Parse()
@@ -35,17 +42,19 @@ func main() {
 	}
 	if HttpServerPort == "" {
 		log.Println("HTTP server port not provided, defaulting to :8080")
-		HttpServerPort = "8088"
+		HttpServerPort = "8080"
 	}
 
+	// Start Prometheus metrics update func
 	go func() {
 		for {
-			log.Println("Querying upgrade status for Prometheus...")
+			log.Println("Querying upgrade status for Prometheus /metrics...")
 			updatePromMetrics()
 			time.Sleep(30 * time.Minute)
 		}
 	}()
 
+	// Start the HTTP server
 	go httpServer()
 	if err := http.ListenAndServe(":8080", nil); err != nil {
 		log.Fatalf("Failed to start HTTP server: %v", err)
@@ -57,6 +66,7 @@ func main() {
 }
 
 func grpcClient(addr string) (*grpc.ClientConn, error) {
+	// Create a gRPC client connection to the specified address
 	clientOptions := grpc.WithTransportCredentials(insecure.NewCredentials())
 	conn, err := grpc.NewClient(
 		addr,
@@ -68,25 +78,49 @@ func grpcClient(addr string) (*grpc.ClientConn, error) {
 	return conn, nil
 }
 
-func getUpgrade(client signaltypes.QueryClient) (*signaltypes.QueryGetUpgradeResponse, error) {
+func getUpgrade(client signaltypes.QueryClient) (UpgradeData, error) {
+	// Create a context with a timeout for the gRPC request
+	// Used for the Prometheus /metrics endpoint
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
+	// Get the upgrade information from the gRPC client
 	resp, err := client.GetUpgrade(ctx, &signaltypes.QueryGetUpgradeRequest{})
 	if err != nil {
-		return nil, fmt.Errorf("failed to get upgrade: %w", err)
+		return UpgradeData{}, fmt.Errorf("failed to get upgrade: %w", err)
+	}
+	jsonBytes, err := json.Marshal(resp)
+	if err != nil {
+		log.Fatalf("marshal failed: %v", err)
+	}
+	var upgrade UpgradeResponse
+	if err := json.Unmarshal(jsonBytes, &upgrade); err != nil {
+		log.Fatalf("unmarshal failed: %v", err)
 	}
 
+	// Get the version tally information from the gRPC client
 	tally, err := client.VersionTally(ctx, &signaltypes.QueryVersionTallyRequest{})
 	if err != nil {
-		return nil, fmt.Errorf("failed to get version tally: %w", err)
+		return UpgradeData{}, fmt.Errorf("failed to get version tally: %w", err)
 	}
-	// TODO: change return to UpgradeData struct and add tally data
-	x := float64(tally.ThresholdPower) / float64(tally.TotalVotingPower)
-	log.Printf("Version tally: %v, Total Voting Power: %d, Threshold Power: %d, Percentage: %.2f%%",
-		tally, tally.TotalVotingPower, tally.ThresholdPower, x*100)
 
-	return resp, nil
+	// Prepare the return data
+	percent := float64(tally.ThresholdPower) / float64(tally.TotalVotingPower)
+	returnData := UpgradeData{
+		UpgradeData: UpgradeResponse{
+			Upgrade: Upgrade{
+				AppVersion:    upgrade.Upgrade.AppVersion,
+				UpgradeHeight: upgrade.Upgrade.UpgradeHeight,
+			},
+		},
+		TallyData: TallyResponse{
+			TotalVotingPower: int64(tally.TotalVotingPower),
+			ThresholdPower:   int64(tally.ThresholdPower),
+			ThresholdPercent: percent,
+		},
+	}
+
+	return returnData, nil
 }
 
 // HTTP server to responsed with JSON data from gRPC response
@@ -110,14 +144,15 @@ func httpServer() {
 		log.Println("HTTP request handled successfully: /upgrade")
 	})
 
+	// Handle Prometheus metrics endpoint
 	http.Handle("/metrics", promhttp.Handler())
 
 	log.Printf("Starting HTTP server on :%s", HttpServerPort)
 	log.Fatal(http.ListenAndServe(":"+HttpServerPort, nil))
-
 }
 
 func updatePromMetrics() {
+	// Create a gRPC connection
 	conn, err := grpcClient(GrpcServerAddress)
 	if err != nil {
 		log.Printf("Failed to connect to gRPC server: %v", err)
@@ -125,6 +160,7 @@ func updatePromMetrics() {
 	}
 	defer conn.Close()
 
+	// Create a gRPC client
 	client := signaltypes.NewQueryClient(conn)
 	resp, err := getUpgrade(client)
 	if err != nil {
@@ -132,22 +168,31 @@ func updatePromMetrics() {
 		return
 	}
 
-	// Step 1: Marshal the gRPC response to JSON
+	// Marshal the response to JSON
 	jsonBytes, err := json.Marshal(resp) // marshal just the Upgrade message
 	if err != nil {
 		log.Fatalf("marshal failed: %v", err)
 	}
-
-	// Step 2: Unmarshal JSON into your custom struct
 	var upgrade UpgradeResponse
 	if err := json.Unmarshal(jsonBytes, &upgrade); err != nil {
 		log.Fatalf("unmarshal failed: %v", err)
 	}
 
-	// TODO: change to UpgradeData struct and add tally data
-	upgradeHeight.Set(float64(upgrade.Upgrade.UpgradeHeight))
-	upgradeVersion.Set(float64(resp.Upgrade.AppVersion))
-	if upgrade.Upgrade.UpgradeHeight > 0 {
+	// Collect tally data
+	tally, err := client.VersionTally(context.Background(), &signaltypes.QueryVersionTallyRequest{})
+	if err != nil {
+		log.Printf("Failed to get version tally: %v", err)
+		return
+	}
+
+	// Update Prometheus metrics
+	tallyThresholdPower.Set(float64(tally.ThresholdPower))
+	tallyTotalVotingPower.Set(float64(tally.TotalVotingPower))
+	percent := float64(tally.ThresholdPower) / float64(tally.TotalVotingPower)
+	tallyThresholdPercent.Set(percent)
+	upgradeHeight.Set(float64(resp.UpgradeData.Upgrade.UpgradeHeight))
+	upgradeVersion.Set(float64(resp.UpgradeData.Upgrade.AppVersion))
+	if resp.UpgradeData.Upgrade.UpgradeHeight > 0 {
 		upgradeStatus.Set(1)
 	} else {
 		upgradeStatus.Set(0)

@@ -46,20 +46,22 @@ Useful for dashboards, alerts, or integrations that track scheduled upgrades in 
 
 ## 📈 Prometheus Metrics
 
-// TODO: Add Prometheus metrics for tally data
 The following metrics are exposed:
 
-- `celestia_upgrade_status`: `1` if an upgrade is scheduled, `0` otherwise
-- `celestia_upgrade_version`: The `app_version` of the upgrade
-- `celestia_upgrade_height`: The block height of the next upgrade
-
-### Example Output:
-
 ```plaintext
+# HELP celestia_tally_threshold_percent Threshold percent signalled for the upgrade
+# TYPE celestia_tally_threshold_percent gauge
+celestia_tally_threshold_percent 83.33333344006462
+# HELP celestia_tally_threshold_power Threshold power signalled for the upgrade
+# TYPE celestia_tally_threshold_power gauge
+celestia_tally_threshold_power 5.20518014e+08
+# HELP celestia_tally_total_voting_power Total voting power in the network
+# TYPE celestia_tally_total_voting_power gauge
+celestia_tally_total_voting_power 6.24621616e+08
 # HELP celestia_upgrade_height Height at which the upgrade will take place
 # TYPE celestia_upgrade_height gauge
 celestia_upgrade_height 6.680339e+06
-# HELP celestia_upgrade_status Upgrade status as reported by celestia-app signal service
+# HELP celestia_upgrade_status Upgrade status as reported by celestia-app signal service, this is 1 if upgrade if signal threshold and upgrade is happening, 0 otherwise
 # TYPE celestia_upgrade_status gauge
 celestia_upgrade_status 1
 # HELP celestia_upgrade_version Current upgrade version
@@ -74,9 +76,17 @@ The JSON API at `/upgrade` provides the following structure:
 
 ```json
 {
-  "height": 6680339,
-  "version": 4,
-  "status": "scheduled"
+  "upgrade_data": {
+    "upgrade": {
+      "app_version": 4,
+      "upgrade_height": 6680339
+    }
+  },
+  "tally_data": {
+    "total_voting_power": 624621492,
+    "threshold_power": 520517910,
+    "threshold_percent": 0.8333333333333334
+  }
 }
 ```
 
