@@ -46,6 +46,7 @@ Useful for dashboards, alerts, or integrations that track scheduled upgrades in 
 
 ## 📈 Prometheus Metrics
 
+// TODO: Add Prometheus metrics for tally data
 The following metrics are exposed:
 
 - `celestia_upgrade_status`: `1` if an upgrade is scheduled, `0` otherwise
@@ -64,6 +65,19 @@ celestia_upgrade_status 1
 # HELP celestia_upgrade_version Current upgrade version
 # TYPE celestia_upgrade_version gauge
 celestia_upgrade_version 4
+```
+
+## 🛠 RPC JSON API
+
+// TODO: Add RPC JSON API details for tally data
+The JSON API at `/upgrade` provides the following structure:
+
+```json
+{
+  "height": 6680339,
+  "version": 4,
+  "status": "scheduled"
+}
 ```
 
 ## 📋 Requirements
