@@ -23,7 +23,7 @@ Useful for dashboards, alerts, or integrations that track scheduled upgrades in 
 1. **Clone the repository**:
 
    ```bash
-   git clone https://github.com/your-org/celestia-upgrade-monitor.git
+   git clone https://github.com/sryps/celestia-upgrade-monitor.git
    cd celestia-upgrade-monitor
 
    ```
