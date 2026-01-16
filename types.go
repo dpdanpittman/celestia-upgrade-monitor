@@ -4,6 +4,7 @@ import "github.com/prometheus/client_golang/prometheus"
 
 var (
 	GrpcServerAddress      string
+	GrpcUseTLS             bool
 	HttpServerPort         string
 	RequiredThresholdPower float64 = 0.80
 )

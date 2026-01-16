@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	signaltypes "celestia-upgrade-monitor/celestia/signal/v1"
@@ -14,6 +16,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
@@ -27,20 +30,54 @@ func init() {
 	)
 }
 
+type grpcAddress struct {
+	addr   string
+	useTLS bool
+}
+
+func parseGrpcAddress(addr string) (grpcAddress, error) {
+	result := grpcAddress{
+		addr:   addr,
+		useTLS: false,
+	}
+
+	if strings.HasPrefix(addr, "https://") {
+		result.useTLS = true
+		result.addr = strings.TrimPrefix(addr, "https://")
+	} else if strings.HasPrefix(addr, "http://") {
+		result.addr = strings.TrimPrefix(addr, "http://")
+	}
+
+	if !strings.Contains(result.addr, ":") {
+		return result, fmt.Errorf("port must be explicitly specified in the address (e.g., host:443)")
+	}
+
+	return result, nil
+}
+
 func main() {
 	log.Println("Starting gRPC client...")
 
 	// Define flags for gRPC server address and HTTP server port
-	addr := flag.String("grpc-addr", "string", "gRPC server address")
+	addr := flag.String("grpc-addr", "string", "gRPC server address with port (e.g., host:443 or https://host:443)")
 	port := flag.String("server-port", "string", "HTTP server port, used to serve JSON data from this HTTP server")
 	flag.Parse()
-	GrpcServerAddress = *addr
+
+	if *addr == "" || *addr == "string" {
+		log.Fatal("gRPC server address must be provided using -grpc-addr flag with explicit port (e.g., host:443)")
+	}
+
+	parsedAddr, err := parseGrpcAddress(*addr)
+	if err != nil {
+		log.Fatalf("Invalid gRPC address: %v", err)
+	}
+	GrpcServerAddress = parsedAddr.addr
+	GrpcUseTLS = parsedAddr.useTLS
 	HttpServerPort = *port
 
-	if GrpcServerAddress == "" {
-		log.Fatal("gRPC server address must be provided using -grpc-addr flag")
-	}
-	if HttpServerPort == "" {
+	log.Printf("Connecting to gRPC server at: %s (TLS: %v)", GrpcServerAddress, GrpcUseTLS)
+
+	if HttpServerPort == "" || HttpServerPort == "string" {
 		log.Println("HTTP server port not provided, defaulting to :8080")
 		HttpServerPort = "8080"
 	}
@@ -67,13 +104,36 @@ func main() {
 
 func grpcClient(addr string) (*grpc.ClientConn, error) {
 	// Create a gRPC client connection to the specified address
-	clientOptions := grpc.WithTransportCredentials(insecure.NewCredentials())
+	// Use passthrough resolver to bypass gRPC's DNS resolver
+	target := "passthrough:///" + addr
+
+	var clientOptions grpc.DialOption
+
+	if GrpcUseTLS {
+		// Extract hostname from address for ServerName
+		hostname := addr
+		if idx := strings.Index(addr, ":"); idx != -1 {
+			hostname = addr[:idx]
+		}
+
+		tlsConfig := &tls.Config{
+			ServerName: hostname,
+		}
+		tlsCredentials := credentials.NewTLS(tlsConfig)
+		clientOptions = grpc.WithTransportCredentials(tlsCredentials)
+		log.Printf("Using TLS credentials for gRPC connection (ServerName: %s)", hostname)
+	} else {
+		clientOptions = grpc.WithTransportCredentials(insecure.NewCredentials())
+		log.Println("Using insecure credentials for gRPC connection")
+	}
+
+	log.Printf("Attempting to connect to target: %s", target)
 	conn, err := grpc.NewClient(
-		addr,
+		target,
 		clientOptions,
 	)
 	if err != nil {
-		log.Fatalf("failed to connect: %v", err)
+		return nil, fmt.Errorf("failed to create client: %w", err)
 	}
 	return conn, nil
 }
